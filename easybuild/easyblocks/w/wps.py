@@ -65,10 +65,12 @@ class EB_WPS(EasyBlock):
 
     @staticmethod
     def extra_options():
-        testdata_urls = [
-            "http://www2.mmm.ucar.edu/wrf/src/data/avn_data.tar.gz",
-            "http://www2.mmm.ucar.edu/wrf/src/wps_files/geog_complete.tar.bz2",  # 2.3GB download!
-        ]
+        testdata_urls = ["http://www2.mmm.ucar.edu/wrf/src/data/avn_data.tar.gz"]
+        if LooseVersion(str(EB_WPS.version)) < LooseVersion('3.8'):
+            testdata_urls += ["http://www2.mmm.ucar.edu/wrf/src/wps_files/geog.tar.gz"]  # 697MB download, 16GB unpacked!
+        else:
+            testdata_urls += ["http://www2.mmm.ucar.edu/wrf/src/wps_files/geog_complete.tar.bz2"]  # 2.3GB download!
+
         extra_vars = {
             'buildtype': [None, "Specify the type of build (smpar: OpenMP, dmpar: MPI).", MANDATORY],
             'runtest': [True, "Build and run WPS tests", CUSTOM],
