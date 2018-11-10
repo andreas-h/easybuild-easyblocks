@@ -80,6 +80,9 @@ class EB_WRF(EasyBlock):
                                 "dmpar (MPI), dm+sm (hybrid OpenMP/MPI)).", MANDATORY],
             'rewriteopts': [True, "Replace -O3 with CFLAGS/FFLAGS", CUSTOM],
             'runtest': [True, "Build and run WRF tests", CUSTOM],
+            'enable_nc4_compression': [None, "Enable netCDF4 compression", CUSTOM],
+            'enable_chem': [None, "Enable chemistry code", CUSTOM],
+            'enable_kpp': [None, "Enable KPP compilation", CUSTOM],
         }
         return EasyBlock.extra_options(extra_vars)
 
@@ -131,8 +134,49 @@ class EB_WRF(EasyBlock):
             else:
                 self.log.info("JasPer module not loaded, assuming that's OK...")
 
+        # enable WRF-Chem
+        if self.cfg['enable_chem']:
+            env.setvar('WRF_CHEM', '1')
+
+            # WRF-Chem only works with the EM_CORE, so we choose it explicitly
+            if LooseVersion(self.version) < LooseVersion('4.0'):
+                env.setvar('EM_CORE', '1')
+                env.setvar('NMM_CORE', '0')
+            else:
+                env.setvar('WRF_EM_CORE', '1')
+                env.setvar('WRF_NMM_CORE', '0')
+
+
+        # enable KPP
+        if self.cfg['enable_kpp']:
+            # enable KPP, if required by config
+            env.setvar('WRF_KPP', '1')
+
+            # flex dependency check + setting env vars
+            flex = get_software_root('flex')
+            if flex:
+                flexlibdir = os.path.join(flex, "lib")
+                env.setvar('FLEX_LIB_DIR', flexlibdir)
+            else:
+                raise EasyBuildError("flex module not loaded, but it is required by option 'enable_kpp'.")
+
+            # byacc dependency check + setting env vars
+            byacc = get_software_root('byacc')
+            if byacc:
+                byaccexecutable = os.path.join(byacc, "bin", "yacc")
+                env.setvar('YACC', byaccexecutable + " -d")
+            else:
+                raise EasyBuildError("byacc module not loaded, but it is required by option 'enable_kpp'.")
+
+        else:
+            env.setvar('WRF_KPP', '0')
+
         # enable support for large file support in netCDF
         env.setvar('WRFIO_NCD_LARGE_FILE_SUPPORT', '1')
+
+        # enable netCDF4 compression
+        if self.cfg['enable_nc4_compression']:
+            env.setvar('NETCDF4', '1')
 
         # patch arch/Config_new.pl script, so that run_cmd_qa receives all output to answer questions
         if LooseVersion(self.version) < LooseVersion('4.0'):
@@ -406,4 +450,15 @@ class EB_WRF(EasyBlock):
         for netcdf_var in ['NETCDF', 'NETCDFF']:
             if os.getenv(netcdf_var) is not None:
                 txt += self.module_generator.set_environment(netcdf_var, os.getenv(netcdf_var))
+        return txt
+
+    def check_readiness_step(self):
+        txt = super(EB_WRF, self).check_readiness_step()
+
+        if LooseVersion(self.version) < LooseVersion('4.0') and self.cfg['enable_chem']:
+            raise EasyBuildError("Building WRF-Chem is only supported from WRF version 4 onwards.  Aborting.")
+
+        if self.cfg['enable_kpp'] and not self.cfg['enable_chem']:
+            raise EasyBuildError("Option 'enable_chem' is False but 'enable_kpp' is True?  Aborting.")
+
         return txt
